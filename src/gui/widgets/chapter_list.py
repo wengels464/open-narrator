@@ -20,14 +20,32 @@ class ChapterList(QWidget):
         
         header_layout.addStretch()
         
-        self.btn_all = QPushButton("All")
+        # Select All button with checkmark icon
+        self.btn_all = QPushButton("☑ All")
         self.btn_all.setObjectName("SecondaryButton")
-        self.btn_all.setFixedSize(40, 24)
+        self.btn_all.setFixedSize(60, 26)
+        self.btn_all.setToolTip("Select all chapters")
+        self.btn_all.setStyleSheet("""
+            QPushButton {
+                font-size: 12px;
+                font-weight: bold;
+                padding: 2px 6px;
+            }
+        """)
         self.btn_all.clicked.connect(self.select_all)
         
-        self.btn_none = QPushButton("None")
+        # Deselect All button with X icon
+        self.btn_none = QPushButton("☐ None")
         self.btn_none.setObjectName("SecondaryButton")
-        self.btn_none.setFixedSize(40, 24)
+        self.btn_none.setFixedSize(65, 26)
+        self.btn_none.setToolTip("Deselect all chapters")
+        self.btn_none.setStyleSheet("""
+            QPushButton {
+                font-size: 12px;
+                font-weight: bold;
+                padding: 2px 6px;
+            }
+        """)
         self.btn_none.clicked.connect(self.select_none)
 
         header_layout.addWidget(self.btn_all)
@@ -54,7 +72,7 @@ class ChapterList(QWidget):
             
             checkbox = QCheckBox()
             checkbox.setChecked(not chapter.is_toc) # Default: check everything except TOC
-            checkbox.stateChanged.connect(self.selection_changed.emit)
+            checkbox.stateChanged.connect(lambda: self.selection_changed.emit())
             # Style the checkbox indicator
             checkbox.setStyleSheet("""
                 QCheckBox::indicator {

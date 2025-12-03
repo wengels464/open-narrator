@@ -36,6 +36,7 @@ class SynthesisWorker(QThread):
     log_message = Signal(str)
     finished = Signal()
     error = Signal(str)
+    cancelled = Signal(str) # Emits partial file path when cancelled
 
     def __init__(self, chapters, output_path, voice, speed, metadata=None):
         super().__init__()
@@ -144,8 +145,22 @@ class SynthesisWorker(QThread):
                 mins, secs = divmod(eta_seconds, 60)
                 self.eta_update.emit(f"ETA: {mins}m {secs}s")
             
+            
             if self._is_cancelled:
-                self.log_message.emit("Conversion cancelled.")
+                # Build partial M4B file if we have any audio
+                if all_audio_files:
+                    try:
+                        self.log_message.emit("Building partial audiobook...")
+                        builder = M4BBuilder()
+                        builder.combine_audio_chunks(all_audio_files, self.output_path, chapters=chapter_metadata)
+                        title = os.path.splitext(os.path.basename(self.output_path))[0]
+                        builder.add_metadata(self.output_path, title=title, author="OpenNarrator")
+                        self.cancelled.emit(self.output_path)  # Emit path for user to decide
+                    except Exception as e:
+                        self.log_message.emit(f"Error building partial file: {e}")
+                        self.error.emit("Conversion cancelled.")
+                else:
+                    self.log_message.emit("Conversion cancelled.")
                 return
 
             if not all_audio_files:

@@ -192,6 +192,7 @@ class MainWindow(QMainWindow):
         self.worker.eta_update.connect(self.lbl_eta.setText)
         self.worker.log_message.connect(self.log)
         self.worker.finished.connect(self.on_conversion_finished)
+        self.worker.cancelled.connect(self.on_conversion_cancelled)
         self.worker.error.connect(self.on_worker_error)
         self.worker.start()
 
@@ -214,6 +215,31 @@ class MainWindow(QMainWindow):
         self.progress_bar.setFormat("Done!")
         self.worker = None
         QMessageBox.information(self, "Success", "Audiobook created successfully!")
+
+    def on_conversion_cancelled(self, partial_file_path):
+        """Handle cancellation with user prompt to keep or discard partial file."""
+        self.reset_ui_state()
+        self.worker = None
+        
+        # Prompt user
+        reply = QMessageBox.question(
+            self,
+            "Conversion Cancelled",
+            f"A partial audiobook was created:\n{partial_file_path}\n\nWould you like to keep this partial file?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        
+        if reply == QMessageBox.No:
+            # User chose to discard
+            try:
+                if os.path.exists(partial_file_path):
+                    os.remove(partial_file_path)
+                    self.log(f"Deleted partial file: {partial_file_path}")
+            except Exception as e:
+                self.log(f"Error deleting file: {e}")
+        else:
+            self.log(f"Partial audiobook saved: {partial_file_path}")
 
     def on_worker_error(self, error_msg):
         self.log(f"Error: {error_msg}")

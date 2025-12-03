@@ -2,6 +2,7 @@ from kokoro_onnx import Kokoro
 import soundfile as sf
 import os
 import numpy as np
+import onnxruntime as ort
 from src.utils.config import KOKORO_MODEL_PATH, VOICES_BIN_PATH
 
 class AudioSynthesizer:
@@ -10,6 +11,18 @@ class AudioSynthesizer:
             raise FileNotFoundError(f"Model not found at {KOKORO_MODEL_PATH}")
         if not os.path.exists(VOICES_BIN_PATH):
             raise FileNotFoundError(f"Voices not found at {VOICES_BIN_PATH}")
+        
+        # Enable GPU acceleration if available
+        # kokoro_onnx checks ONNX_PROVIDER environment variable
+        available_providers = ort.get_available_providers()
+        if 'CUDAExecutionProvider' in available_providers:
+            os.environ['ONNX_PROVIDER'] = 'CUDAExecutionProvider'
+            print("GPU acceleration enabled: NVIDIA CUDA")
+        elif 'DmlExecutionProvider' in available_providers:
+            os.environ['ONNX_PROVIDER'] = 'DmlExecutionProvider'
+            print("GPU acceleration enabled: DirectML")
+        else:
+            print("GPU not available, using CPU")
         
         # Load Kokoro with the correct .bin file (no pickle workaround needed)
         self.kokoro = Kokoro(KOKORO_MODEL_PATH, VOICES_BIN_PATH)
