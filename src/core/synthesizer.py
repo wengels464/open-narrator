@@ -15,14 +15,32 @@ class AudioSynthesizer:
         # Enable GPU acceleration if available
         # kokoro_onnx checks ONNX_PROVIDER environment variable
         available_providers = ort.get_available_providers()
+        
+        # Try to use GPU, but fall back to CPU if it fails
+        gpu_enabled = False
         if 'CUDAExecutionProvider' in available_providers:
-            os.environ['ONNX_PROVIDER'] = 'CUDAExecutionProvider'
-            print("GPU acceleration enabled: NVIDIA CUDA")
+            try:
+                os.environ['ONNX_PROVIDER'] = 'CUDAExecutionProvider'
+                print("Attempting GPU acceleration: NVIDIA CUDA")
+                gpu_enabled = True
+            except Exception as e:
+                print(f"CUDA initialization failed: {e}")
+                print("Falling back to CPU")
+                if 'ONNX_PROVIDER' in os.environ:
+                    del os.environ['ONNX_PROVIDER']
         elif 'DmlExecutionProvider' in available_providers:
-            os.environ['ONNX_PROVIDER'] = 'DmlExecutionProvider'
-            print("GPU acceleration enabled: DirectML")
-        else:
-            print("GPU not available, using CPU")
+            try:
+                os.environ['ONNX_PROVIDER'] = 'DmlExecutionProvider'
+                print("GPU acceleration enabled: DirectML")
+                gpu_enabled = True
+            except Exception as e:
+                print(f"DirectML initialization failed: {e}")
+                print("Falling back to CPU")
+                if 'ONNX_PROVIDER' in os.environ:
+                    del os.environ['ONNX_PROVIDER']
+        
+        if not gpu_enabled:
+            print("Using CPU for synthesis")
         
         # Load Kokoro with the correct .bin file (no pickle workaround needed)
         self.kokoro = Kokoro(KOKORO_MODEL_PATH, VOICES_BIN_PATH)
