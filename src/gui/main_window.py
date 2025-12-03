@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QProgressBar, QFileDialog, QMessageBox, QSplitter
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QProgressBar, QFileDialog, QMessageBox, QSplitter
 from PySide6.QtCore import Qt
 import os
 

@@ -3,6 +3,7 @@ import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
 import os
+import re
 import warnings
 
 # Suppress ebooklib warnings
@@ -126,6 +127,19 @@ def extract_chapters_from_epub(epub_path, skip_toc=False) -> List[Chapter]:
             for script in soup(["script", "style"]):
                 script.decompose()
             
+            # Remove image-related elements (captions, figures, etc.)
+            # These won't be present in the audiobook
+            for element in soup.find_all(['figure', 'figcaption', 'caption', 'img']):
+                element.decompose()
+            
+            # Remove elements with image-related classes
+            for element in soup.find_all(class_=re.compile(r'(image|figure|caption|illustration|photo|picture)', re.I)):
+                element.decompose()
+            
+            # Remove elements with image-related ids
+            for element in soup.find_all(id=re.compile(r'(image|figure|caption|illustration|photo|picture)', re.I)):
+                element.decompose()
+            
             # Try to find a title
             title = ""
             
@@ -146,8 +160,15 @@ def extract_chapters_from_epub(epub_path, skip_toc=False) -> List[Chapter]:
             if not title:
                 title = item_name
 
-            # Get text
-            chapter_text = soup.get_text(separator='\n').strip()
+            # Get text with proper spacing
+            # Use space separator to avoid breaking words
+            chapter_text = soup.get_text(separator=' ', strip=True)
+            
+            # Normalize excessive whitespace while preserving paragraph breaks
+            # Replace multiple spaces with single space
+            chapter_text = re.sub(r' +', ' ', chapter_text)
+            # Clean up any remaining artifacts
+            chapter_text = chapter_text.strip()
             
             if not chapter_text:
                 continue
