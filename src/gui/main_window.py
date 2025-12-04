@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QProgressBar, QFileDialog, QMessageBox, QSplitter, QStatusBar
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QProgressBar, QFileDialog, QMessageBox, QSplitter, QStatusBar, QPushButton
 from PySide6.QtCore import Qt, QTimer
 import os
 import time
@@ -8,7 +8,8 @@ from src.gui.widgets.drop_zone import DropZone
 from src.gui.widgets.chapter_list import ChapterList
 from src.gui.widgets.controls import Controls
 from src.gui.widgets.text_editor import ChapterEditor
-from src.gui.workers import ExtractionWorker, SynthesisWorker
+from src.gui.widgets.metadata_panel import MetadataPanel
+from src.gui.workers import ExtractionWorker, SynthesisWorker, MetadataWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -20,6 +21,8 @@ class MainWindow(QMainWindow):
         self.current_file = None
         self.chapters = []
         self.worker = None
+        self.metadata = {}
+        self.metadata_worker = None
         
         self.setup_ui()
 
@@ -44,10 +47,15 @@ class MainWindow(QMainWindow):
         self.drop_zone.browse_requested.connect(self.browse_file)
         
         self.controls = Controls()
-        self.controls.convert_clicked.connect(self.toggle_conversion)
         
         left_layout.addWidget(self.drop_zone)
         left_layout.addWidget(self.controls)
+        
+        # Metadata Panel
+        self.metadata_panel = MetadataPanel()
+        self.metadata_panel.search_requested.connect(self.search_metadata)
+        left_layout.addWidget(self.metadata_panel)
+        
         left_layout.addStretch()
         
         # Right Area: Splitter for Chapter List and Editor
@@ -64,7 +72,19 @@ class MainWindow(QMainWindow):
         
         # Assemble Top Layout
         top_layout.addLayout(left_layout, 1) # 1/3 width
-        top_layout.addWidget(right_splitter, 2) # 2/3 width
+        
+        # Right column with chapters and convert button
+        right_column = QVBoxLayout()
+        right_column.addWidget(right_splitter)
+        
+        # Convert Button (centered under chapters)
+        self.btn_convert = QPushButton("Convert to Audiobook")
+        self.btn_convert.setMinimumHeight(45)
+        self.btn_convert.setStyleSheet("background-color: #1976d2; color: white; font-weight: bold; font-size: 14px;")
+        self.btn_convert.clicked.connect(self.toggle_conversion)
+        right_column.addWidget(self.btn_convert)
+        
+        top_layout.addLayout(right_column, 2) # 2/3 width
         
         main_layout.addLayout(top_layout)
         
@@ -128,6 +148,35 @@ class MainWindow(QMainWindow):
         self.log(f"Title: {metadata.get('title', 'Unknown')}")
         self.drop_zone.label.setText(f"Loaded:\n{os.path.basename(self.current_file)}")
         self.worker = None
+        
+        # Populate metadata panel with extracted info
+        self.metadata_panel.txt_title.setText(metadata.get('title', ''))
+        self.metadata_panel.txt_author.setText(metadata.get('author', ''))
+
+    def search_metadata(self, title, author):
+        """Start metadata search in background thread."""
+        self.log(f"Searching metadata for: {title}")
+        
+        self.metadata_worker = MetadataWorker(title, author if author else None)
+        self.metadata_worker.finished.connect(self.on_metadata_found)
+        self.metadata_worker.error.connect(self.on_metadata_error)
+        self.metadata_worker.start()
+    
+    def on_metadata_found(self, result):
+        """Handle successful metadata search."""
+        self.metadata_panel.reset_search_button()
+        self.metadata_panel.set_metadata(result)
+        self.log(f"Found metadata from {result.source}")
+        if result.cover_path:
+            self.log(f"Cover art downloaded: {result.cover_path}")
+        self.metadata_worker = None
+    
+    def on_metadata_error(self, error_msg):
+        """Handle metadata search error."""
+        self.metadata_panel.reset_search_button()
+        self.log(f"Metadata search error: {error_msg}")
+        QMessageBox.warning(self, "Metadata Search", error_msg)
+        self.metadata_worker = None
 
     def on_chapter_selected(self, item):
         index = self.chapter_list.list_widget.row(item)

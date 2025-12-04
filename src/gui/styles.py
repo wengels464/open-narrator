@@ -91,6 +91,47 @@ QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{
     border: 1px solid {COLORS['primary']};
 }}
 
+/* SpinBox Arrow Buttons */
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left: 1px solid {COLORS['border']};
+    background-color: {COLORS['surface']};
+}}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover {{
+    background-color: {COLORS['surface_hover']};
+}}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 6px solid {COLORS['text']};
+}}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    border-left: 1px solid {COLORS['border']};
+    background-color: {COLORS['surface']};
+}}
+
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background-color: {COLORS['surface_hover']};
+}}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid {COLORS['text']};
+}}
+
 /* List Widget */
 QListWidget {{
     background-color: {COLORS['surface']};

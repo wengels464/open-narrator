@@ -10,6 +10,7 @@ from src.core.cleaner import clean_text, segment_text
 from src.core.synthesizer import AudioSynthesizer
 from src.core.audio_builder import M4BBuilder
 from src.utils.audio_utils import trim_silence, create_silence
+from src.core.metadata import search_metadata, download_and_process_cover
 
 class ExtractionWorker(QThread):
     finished = Signal(list, dict) # Emits (chapters, metadata)
@@ -32,8 +33,66 @@ class ExtractionWorker(QThread):
             # Clean chapter content immediately so user sees cleaned text in GUI
             for chapter in chapters:
                 chapter.content = clean_text(chapter.content)
+                
+                # Strip chapter title from body - it's always the first line/segment
+                # Since we narrate "Chapter X. Title." separately, remove the title from body
+                import re
+                
+                content = chapter.content
+                title_clean = clean_text(chapter.title).lower().strip()
+                
+                # The title is typically the first sentence or first line
+                # Check if content starts with something that looks like a title
+                
+                # Try to find and remove the title from the beginning
+                # First, check if it starts with "Chapter X" pattern
+                content = re.sub(r'^Chapter\s+\d+[:.]*\s*', '', content, flags=re.IGNORECASE)
+                
+                # Now check if remaining content starts with the chapter title
+                # by comparing first ~100 chars
+                first_chunk = content[:min(len(content), 150)].lower()
+                
+                # If the title appears in the first chunk, remove everything up to end of title
+                if title_clean and title_clean in first_chunk:
+                    idx = first_chunk.find(title_clean)
+                    content = content[idx + len(title_clean):].strip()
+                
+                # Clean up leading punctuation and whitespace
+                content = re.sub(r'^[.,;:\-\s]+', '', content).strip()
+                
+                chapter.content = content
             
             self.finished.emit(chapters, metadata)
+        except Exception as e:
+            self.error.emit(str(e))
+
+class MetadataWorker(QThread):
+    """Worker thread for fetching book metadata from online sources."""
+    finished = Signal(object)  # Emits MetadataResult
+    error = Signal(str)
+    
+    def __init__(self, title, author=None):
+        super().__init__()
+        self.title = title
+        self.author = author
+    
+    def run(self):
+        try:
+            # Search for metadata
+            result = search_metadata(self.title, self.author)
+            
+            if not result:
+                self.error.emit(f"No metadata found for '{self.title}'")
+                return
+            
+            # Download and process cover if URL available
+            if result.cover_url:
+                cover_path = download_and_process_cover(result.cover_url)
+                if cover_path:
+                    result.cover_path = cover_path
+            
+            self.finished.emit(result)
+            
         except Exception as e:
             self.error.emit(str(e))
 
@@ -123,6 +182,15 @@ class SynthesisWorker(QThread):
                 
                 # Clean & Segment (Redundant but fast enough)
                 text = clean_text(chapter.content)
+                
+                # Strip chapter title from body if it appears at the start
+                # to avoid narrating it twice
+                chapter_title_clean = clean_text(chapter.title)
+                if text.lower().startswith(chapter_title_clean.lower()):
+                    text = text[len(chapter_title_clean):].strip()
+                    # Remove leading punctuation if any
+                    text = text.lstrip('.,;:-').strip()
+                
                 sentences = segment_text(text)
                 
                 if not sentences:
@@ -130,7 +198,30 @@ class SynthesisWorker(QThread):
                     
                 chapter_start_time = current_timestamp
                 
-                # Synthesize sentences
+                # Narrate chapter title first
+                chapter_num = i + 1
+                title_text = f"Chapter {chapter_num}. {chapter.title}."
+                try:
+                    self.log_message.emit(f"Narrating title: {title_text}")
+                    audio, sample_rate = synthesizer.synthesize_segment(
+                        title_text, voice_name=self.voice, speed=self.speed
+                    )
+                    
+                    # Add pause after title
+                    if self.sentence_pause > 0:
+                        silence = create_silence(self.sentence_pause * 2, sample_rate)  # Double pause after title
+                        audio = np.concatenate([audio, silence])
+                    
+                    duration = len(audio) / sample_rate
+                    output_wav = os.path.join(temp_dir, f"ch{i}_title.wav")
+                    synthesizer.save_audio(audio, sample_rate, output_wav)
+                    
+                    all_audio_files.append(output_wav)
+                    current_timestamp += duration
+                except Exception as e:
+                    self.log_message.emit(f"Error synthesizing chapter title: {e}")
+                
+                # Synthesize body sentences
                 for j, sentence in enumerate(sentences):
                     if self._is_cancelled:
                         break

@@ -131,17 +131,17 @@ class Controls(QWidget):
         layout.addWidget(self.speed_spin)
         
         # Pause Settings (no longer in a checkbox group)
-        layout.addWidget(QLabel("Sentence Pause (ms)"))
+        layout.addWidget(QLabel("Sentence Pause (ms) Daisy. They"))
         self.spin_sentence_pause = QSpinBox()
         self.spin_sentence_pause.setRange(0, 2000)
-        self.spin_sentence_pause.setValue(300)  # Default: 300ms
-        self.spin_sentence_pause.setSingleStep(50)
+        self.spin_sentence_pause.setValue(200)  # Default: 200ms
+        self.spin_sentence_pause.setSingleStep(20)
         layout.addWidget(self.spin_sentence_pause)
         
-        layout.addWidget(QLabel("Comma Pause (ms)"))
+        layout.addWidget(QLabel("Comma Pause (ms) people, Tom"))
         self.spin_comma_pause = QSpinBox()
         self.spin_comma_pause.setRange(0, 1000)
-        self.spin_comma_pause.setValue(150)  # Default: 150ms
+        self.spin_comma_pause.setValue(80)  # Default: 80ms
         self.spin_comma_pause.setSingleStep(10)
         layout.addWidget(self.spin_comma_pause)
         
@@ -159,12 +159,6 @@ class Controls(QWidget):
         layout.addWidget(self.chk_loop)
         
         layout.addStretch()
-        
-        # Convert Button
-        self.btn_convert = QPushButton("Convert to Audiobook")
-        self.btn_convert.setMinimumHeight(40)
-        self.btn_convert.clicked.connect(self.convert_clicked.emit)
-        layout.addWidget(self.btn_convert)
         
         # GPU Status
         gpu_available, gpu_name = get_gpu_info()
@@ -245,11 +239,9 @@ class Controls(QWidget):
         self.player.setSource(QUrl.fromLocalFile(file_path))
         self.audio_output.setVolume(1.0)
         
-        # Set loop mode if enabled
-        if self.loop_enabled:
-            self.player.setLoops(QMediaPlayer.Infinite)
-        else:
-            self.player.setLoops(1)
+        # Always play once - looping handled by on_media_status_changed
+        # This ensures we regenerate with current settings each loop
+        self.player.setLoops(1)
             
         self.player.play()
 
@@ -271,6 +263,7 @@ class Controls(QWidget):
 
     def on_media_status_changed(self, status):
         # Handle end of media for looping with regeneration
+        # This regenerates audio with CURRENT pause settings each loop
         if status == QMediaPlayer.EndOfMedia and self.loop_enabled:
             # Regenerate with current settings and play again
             self.play_preview()
