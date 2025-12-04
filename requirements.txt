@@ -1,13 +1,4 @@
 PySide6
-onnxruntime-gpu; sys_platform == 'win32' or sys_platform == 'linux'
-onnxruntime; sys_platform == 'darwin'
-scipy
-numpy
-pymupdf
-EbookLib
-beautifulsoup4
-pysbd
-mutagen
-soundfile
-requests
-kokoro-onnx
+kokoro
+torch --index-url https://download.pytorch.org/whl/cu121
+torchaudio --index-url https://download.pytorch.org/whl/cu121

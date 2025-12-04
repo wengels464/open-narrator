@@ -11,15 +11,19 @@ class M4BBuilder:
         Combines multiple audio files into one M4B file using FFmpeg.
         chapters: List of (title, start_time, end_time) tuples in seconds.
         """
-        # Create a file list for ffmpeg
-        list_file = output_path + ".list.txt"
+        # Create a file list for ffmpeg in the same directory as the audio files
+        # This avoids issues with absolute paths and drive letters on Windows
+        if not audio_files:
+            raise ValueError("No audio files to combine")
+            
+        audio_dir = os.path.dirname(audio_files[0])
+        list_file = os.path.join(audio_dir, "concat_list.txt")
+        
         with open(list_file, 'w', encoding='utf-8') as f:
             for audio_file in audio_files:
-                # Escape paths if needed
-                # FFmpeg concat demuxer requires 'file path' format
-                # Windows paths with backslashes need to be escaped or use forward slashes
-                safe_path = audio_file.replace('\\', '/')
-                f.write(f"file '{safe_path}'\n")
+                # Use filename only, as list file is in same dir
+                filename = os.path.basename(audio_file)
+                f.write(f"file '{filename}'\n")
         
         metadata_file = None
         if chapters:

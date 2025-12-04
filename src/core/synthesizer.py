@@ -1,65 +1,63 @@
-from kokoro_onnx import Kokoro
+from kokoro import KPipeline
 import soundfile as sf
 import os
 import numpy as np
-import onnxruntime as ort
+import torch
 from src.utils.config import KOKORO_MODEL_PATH, VOICES_BIN_PATH
 
 class AudioSynthesizer:
     def __init__(self):
-        if not os.path.exists(KOKORO_MODEL_PATH):
-            raise FileNotFoundError(f"Model not found at {KOKORO_MODEL_PATH}")
-        if not os.path.exists(VOICES_BIN_PATH):
-            raise FileNotFoundError(f"Voices not found at {VOICES_BIN_PATH}")
+        # Determine device
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f"Initializing Kokoro TTS on {self.device}...")
         
-        # Enable GPU acceleration if available
-        # kokoro_onnx checks ONNX_PROVIDER environment variable
-        available_providers = ort.get_available_providers()
-        
-        # Try to use GPU, but fall back to CPU if it fails
-        gpu_enabled = False
-        if 'CUDAExecutionProvider' in available_providers:
-            try:
-                os.environ['ONNX_PROVIDER'] = 'CUDAExecutionProvider'
-                print("Attempting GPU acceleration: NVIDIA CUDA")
-                gpu_enabled = True
-            except Exception as e:
-                print(f"CUDA initialization failed: {e}")
-                print("Falling back to CPU")
-                if 'ONNX_PROVIDER' in os.environ:
-                    del os.environ['ONNX_PROVIDER']
-        elif 'DmlExecutionProvider' in available_providers:
-            try:
-                os.environ['ONNX_PROVIDER'] = 'DmlExecutionProvider'
-                print("GPU acceleration enabled: DirectML")
-                gpu_enabled = True
-            except Exception as e:
-                print(f"DirectML initialization failed: {e}")
-                print("Falling back to CPU")
-                if 'ONNX_PROVIDER' in os.environ:
-                    del os.environ['ONNX_PROVIDER']
-        
-        if not gpu_enabled:
-            print("Using CPU for synthesis")
-        
-        # Load Kokoro with the correct .bin file (no pickle workaround needed)
-        self.kokoro = Kokoro(KOKORO_MODEL_PATH, VOICES_BIN_PATH)
+        try:
+            # Initialize pipeline for American English
+            # lang_code='a' is for American English in Kokoro
+            self.pipeline = KPipeline(lang_code='a', device=self.device)
+            print(f"Kokoro initialized successfully on {self.device}")
+        except Exception as e:
+            print(f"Failed to initialize Kokoro: {e}")
+            if self.device == 'cuda':
+                print("Falling back to CPU...")
+                self.device = 'cpu'
+                self.pipeline = KPipeline(lang_code='a', device='cpu')
+            else:
+                raise e
 
     def synthesize_segment(self, text, voice_name='af_sarah', speed=1.0):
         """
-        Synthesizes text to audio.
+        Synthesizes text to audio using Kokoro PyTorch pipeline.
         Returns audio data (numpy array) and sample rate.
         """
         try:
-            # Kokoro.create returns (audio, sample_rate)
-            # audio is a numpy array
-            audio, sample_rate = self.kokoro.create(
+            # Generate audio
+            # pipeline returns a generator of results
+            generator = self.pipeline(
                 text, 
                 voice=voice_name, 
                 speed=speed, 
-                lang="en-us"
+                split_pattern=r'\n+'
             )
-            return audio, sample_rate
+            
+            # Collect all audio segments
+            audio_segments = []
+            sample_rate = 24000 # Kokoro default
+            
+            for result in generator:
+                if hasattr(result, 'audio'):
+                    audio_segments.append(result.audio)
+                elif isinstance(result, tuple):
+                    # Some versions might return tuple
+                    audio_segments.append(result[0])
+            
+            if not audio_segments:
+                return np.array([], dtype=np.float32), sample_rate
+                
+            # Concatenate all segments
+            full_audio = np.concatenate(audio_segments)
+            return full_audio, sample_rate
+            
         except Exception as e:
             print(f"Error synthesizing text: {text[:50]}... Error: {e}")
             raise e
