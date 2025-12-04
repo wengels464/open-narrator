@@ -29,6 +29,10 @@ class ExtractionWorker(QThread):
             else:
                 raise ValueError("Unsupported file format")
             
+            # Clean chapter content immediately so user sees cleaned text in GUI
+            for chapter in chapters:
+                chapter.content = clean_text(chapter.content)
+            
             self.finished.emit(chapters, metadata)
         except Exception as e:
             self.error.emit(str(e))

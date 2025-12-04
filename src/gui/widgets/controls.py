@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox, QPushButton, QMessageBox, QGroupBox, QSpinBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox, QPushButton, QMessageBox, QSpinBox, QCheckBox
 from PySide6.QtCore import Signal, QThread, Qt, QUrl
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 import numpy as np
@@ -14,7 +14,7 @@ class PreviewWorker(QThread):
     error = Signal(str)
     audio_ready = Signal(str) # Emits path to generated audio
 
-    def __init__(self, voice, speed, sentence_pause=0.4, comma_pause=None):
+    def __init__(self, voice, speed, sentence_pause=0.3, comma_pause=0.15):
         super().__init__()
         self.voice = voice
         self.speed = speed
@@ -28,8 +28,6 @@ class PreviewWorker(QThread):
             import re
             
             synth = AudioSynthesizer()
-            # Friendly name mapping for preview text
-            name = self.voice.split('_')[1].title()
             text = PREVIEW_TEXT
             
             # Apply advanced prosody if comma_pause is set
@@ -102,12 +100,15 @@ class Controls(QWidget):
     def __init__(self):
         super().__init__()
         self.voice_data = {} # Map friendly name -> code
+        self.loop_enabled = False
+        self.current_preview_path = None
         
         # Audio Player Setup
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.player.setAudioOutput(self.audio_output)
         self.player.playbackStateChanged.connect(self.on_playback_state_changed)
+        self.player.mediaStatusChanged.connect(self.on_media_status_changed)
         
         self.setup_ui()
         self.load_voices()
@@ -118,12 +119,31 @@ class Controls(QWidget):
         
         # Voice Selection
         layout.addWidget(QLabel("Voice"))
-        
-        voice_layout = QHBoxLayout()
         self.voice_combo = QComboBox()
-        voice_layout.addWidget(self.voice_combo, stretch=1)
+        layout.addWidget(self.voice_combo)
         
-        layout.addLayout(voice_layout)
+        # Speed Selection
+        layout.addWidget(QLabel("Speed"))
+        self.speed_spin = QDoubleSpinBox()
+        self.speed_spin.setRange(0.5, 2.0)
+        self.speed_spin.setSingleStep(0.05)
+        self.speed_spin.setValue(1.10)  # Default: 1.10x
+        layout.addWidget(self.speed_spin)
+        
+        # Pause Settings (no longer in a checkbox group)
+        layout.addWidget(QLabel("Sentence Pause (ms)"))
+        self.spin_sentence_pause = QSpinBox()
+        self.spin_sentence_pause.setRange(0, 2000)
+        self.spin_sentence_pause.setValue(300)  # Default: 300ms
+        self.spin_sentence_pause.setSingleStep(50)
+        layout.addWidget(self.spin_sentence_pause)
+        
+        layout.addWidget(QLabel("Comma Pause (ms)"))
+        self.spin_comma_pause = QSpinBox()
+        self.spin_comma_pause.setRange(0, 1000)
+        self.spin_comma_pause.setValue(150)  # Default: 150ms
+        self.spin_comma_pause.setSingleStep(10)
+        layout.addWidget(self.spin_comma_pause)
         
         # Voice Preview Button (large green)
         self.btn_preview = QPushButton("Voice Preview")
@@ -132,41 +152,11 @@ class Controls(QWidget):
         self.btn_preview.clicked.connect(self.play_preview)
         layout.addWidget(self.btn_preview)
         
-
-        
-        # Speed Selection
-        layout.addWidget(QLabel("Speed"))
-        self.speed_spin = QDoubleSpinBox()
-        self.speed_spin.setRange(0.5, 2.0)
-        self.speed_spin.setSingleStep(0.1)
-        self.speed_spin.setValue(1.0)
-        layout.addWidget(self.speed_spin)
-        
-        # Advanced Settings
-        self.group_advanced = QGroupBox("Advanced Settings")
-        self.group_advanced.setCheckable(True)
-        self.group_advanced.setChecked(False)
-        
-        adv_layout = QVBoxLayout()
-        
-        # Sentence Pause
-        adv_layout.addWidget(QLabel("Sentence Pause (ms)"))
-        self.spin_sentence_pause = QSpinBox()
-        self.spin_sentence_pause.setRange(0, 2000)
-        self.spin_sentence_pause.setValue(400) # Default
-        self.spin_sentence_pause.setSingleStep(50)
-        adv_layout.addWidget(self.spin_sentence_pause)
-        
-        # Comma Pause
-        adv_layout.addWidget(QLabel("Comma Pause (ms)"))
-        self.spin_comma_pause = QSpinBox()
-        self.spin_comma_pause.setRange(0, 1000)
-        self.spin_comma_pause.setValue(150) # Default short pause
-        self.spin_comma_pause.setSingleStep(10)
-        adv_layout.addWidget(self.spin_comma_pause)
-        
-        self.group_advanced.setLayout(adv_layout)
-        layout.addWidget(self.group_advanced)
+        # Loop Audio Checkbox
+        self.chk_loop = QCheckBox("Loop Audio for Pause Testing")
+        self.chk_loop.setChecked(False)
+        self.chk_loop.toggled.connect(self.on_loop_toggled)
+        layout.addWidget(self.chk_loop)
         
         layout.addStretch()
         
@@ -208,14 +198,22 @@ class Controls(QWidget):
                     self.voice_data[friendly] = code
                     self.voice_combo.addItem(friendly)
                 
-                # Set default to Sarah
-                default_name = self.get_friendly_name("af_sarah")
+                # Set default to Sky (American Female)
+                default_name = self.get_friendly_name("af_sky")
                 index = self.voice_combo.findText(default_name)
                 if index >= 0:
                     self.voice_combo.setCurrentIndex(index)
         except Exception as e:
             print(f"Failed to load voices: {e}")
             self.voice_combo.addItem("Error loading voices")
+
+    def on_loop_toggled(self, checked):
+        self.loop_enabled = checked
+        if checked and self.current_preview_path:
+            # If we have a preview and just enabled loop, set it up
+            self.player.setLoops(QMediaPlayer.Infinite)
+        else:
+            self.player.setLoops(1)
 
     def play_preview(self):
         # If currently playing, stop
@@ -233,12 +231,9 @@ class Controls(QWidget):
         self.btn_preview.setEnabled(False)
         self.btn_preview.setText("Generating...")
         
-        # Get pause settings
-        sentence_pause = 0.4
-        comma_pause = None
-        if self.group_advanced.isChecked():
-            sentence_pause = self.spin_sentence_pause.value() / 1000.0
-            comma_pause = self.spin_comma_pause.value() / 1000.0
+        # Get pause settings (always enabled now)
+        sentence_pause = self.spin_sentence_pause.value() / 1000.0
+        comma_pause = self.spin_comma_pause.value() / 1000.0
         
         self.worker = PreviewWorker(code, speed, sentence_pause, comma_pause)
         self.worker.audio_ready.connect(self.on_preview_ready)
@@ -246,15 +241,23 @@ class Controls(QWidget):
         self.worker.start()
 
     def on_preview_ready(self, file_path):
+        self.current_preview_path = file_path
         self.player.setSource(QUrl.fromLocalFile(file_path))
         self.audio_output.setVolume(1.0)
+        
+        # Set loop mode if enabled
+        if self.loop_enabled:
+            self.player.setLoops(QMediaPlayer.Infinite)
+        else:
+            self.player.setLoops(1)
+            
         self.player.play()
-        # Button state will be handled by on_playback_state_changed
 
     def on_preview_error(self, error_msg):
         QMessageBox.warning(self, "Preview Error", error_msg)
         self.btn_preview.setEnabled(True)
-        self.btn_preview.setText("▶")
+        self.btn_preview.setText("Voice Preview")
+        self.btn_preview.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold;")
 
     def on_playback_state_changed(self, state):
         if state == QMediaPlayer.PlayingState:
@@ -266,19 +269,21 @@ class Controls(QWidget):
             self.btn_preview.setText("Voice Preview")
             self.btn_preview.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold;")
 
+    def on_media_status_changed(self, status):
+        # Handle end of media for looping with regeneration
+        if status == QMediaPlayer.EndOfMedia and self.loop_enabled:
+            # Regenerate with current settings and play again
+            self.play_preview()
+
     def get_settings(self):
         friendly = self.voice_combo.currentText()
         
-        # Get advanced settings if enabled
-        sentence_pause = 0.4 # Default 400ms
-        comma_pause = None # Default None (let model decide)
-        
-        if self.group_advanced.isChecked():
-            sentence_pause = self.spin_sentence_pause.value() / 1000.0
-            comma_pause = self.spin_comma_pause.value() / 1000.0
+        # Pause settings always enabled
+        sentence_pause = self.spin_sentence_pause.value() / 1000.0
+        comma_pause = self.spin_comma_pause.value() / 1000.0
             
         return {
-            "voice": self.voice_data.get(friendly, "af_sarah"),
+            "voice": self.voice_data.get(friendly, "af_sky"),
             "speed": self.speed_spin.value(),
             "sentence_pause": sentence_pause,
             "comma_pause": comma_pause
