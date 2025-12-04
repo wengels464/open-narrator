@@ -8,6 +8,11 @@ def clean_text(text):
     # Normalize quotes
     text = text.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
     
+    # Convert em dashes and en dashes to periods (treat as sentence breaks)
+    text = text.replace('—', '.') # Em dash
+    text = text.replace('–', '.') # En dash
+    text = text.replace('- ', '. ') # Hyphen with space (often used as informal em dash)
+    
     # Remove footnote references like [1], [12]
     text = re.sub(r'\[\d+\]', '', text)
     

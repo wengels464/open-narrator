@@ -4,10 +4,12 @@ import time
 import tempfile
 import shutil
 import torch
+import numpy as np
 from src.core.extractor import extract_chapters_from_pdf, extract_chapters_from_epub
 from src.core.cleaner import clean_text, segment_text
 from src.core.synthesizer import AudioSynthesizer
 from src.core.audio_builder import M4BBuilder
+from src.utils.audio_utils import trim_silence, create_silence
 
 class ExtractionWorker(QThread):
     finished = Signal(list, dict) # Emits (chapters, metadata)
@@ -39,13 +41,15 @@ class SynthesisWorker(QThread):
     error = Signal(str)
     cancelled = Signal(str) # Emits partial file path when cancelled
 
-    def __init__(self, chapters, output_path, voice, speed, metadata=None):
+    def __init__(self, chapters, output_path, voice, speed, metadata=None, sentence_pause=0.4, comma_pause=None):
         super().__init__()
         self.chapters = chapters
         self.output_path = output_path
         self.voice = voice
         self.speed = speed
         self.metadata = metadata or {}
+        self.sentence_pause = sentence_pause
+        self.comma_pause = comma_pause
         self._is_cancelled = False
 
     def cancel(self):
@@ -59,7 +63,6 @@ class SynthesisWorker(QThread):
         
         start_time = time.time()
         total_chapters = len(self.chapters)
-        chapters_processed = 0
         
         try:
             # Initialize Synthesizer
@@ -75,6 +78,12 @@ class SynthesisWorker(QThread):
                 self.log_message.emit("Synthesizing intro announcement...")
                 try:
                     audio, sr = synthesizer.synthesize_segment(intro_text, voice_name=self.voice, speed=self.speed)
+                    
+                    # Add sentence pause after intro
+                    if self.sentence_pause > 0:
+                        silence = create_silence(self.sentence_pause, sr)
+                        audio = np.concatenate([audio, silence])
+                        
                     duration = len(audio) / sr
                     # Use absolute path for intro.wav
                     output_wav = os.path.abspath(os.path.join(temp_dir, "intro.wav"))
@@ -102,15 +111,6 @@ class SynthesisWorker(QThread):
 
             sentences_processed = 0
             
-            # Group sentences by chapter for processing
-            # We need to maintain the chapter structure for file naming and metadata
-            current_chapter_idx = -1
-            chapter_sentences = []
-            
-            # Re-organize for processing loop
-            # This is a bit inefficient to re-loop, but safer to stick to the original structure
-            # Let's just use the pre-calculated count for the denominator
-            
             for i, chapter in enumerate(self.chapters):
                 if self._is_cancelled:
                     break
@@ -135,15 +135,70 @@ class SynthesisWorker(QThread):
                         continue
                         
                     try:
-                        audio, sample_rate = synthesizer.synthesize_segment(
-                            sentence, 
-                            voice_name=self.voice, 
-                            speed=self.speed
-                        )
+                        # Advanced Prosody Logic
+                        final_audio = None
+                        sample_rate = 24000
                         
-                        duration = len(audio) / sample_rate
+                        if self.comma_pause is not None:
+                            # Split by comma to control pause duration
+                            import re
+                            parts = re.split(r'(,)', sentence)
+                            
+                            phrase_audios = []
+                            current_phrase = ""
+                            
+                            for part in parts:
+                                current_phrase += part
+                                if ',' in part or part == parts[-1]: # End of phrase or end of sentence
+                                    if not current_phrase.strip():
+                                        continue
+                                        
+                                    # Synthesize phrase
+                                    audio, sample_rate = synthesizer.synthesize_segment(
+                                        current_phrase, 
+                                        voice_name=self.voice, 
+                                        speed=self.speed
+                                    )
+                                    
+                                    # Trim model's default silence
+                                    audio = trim_silence(audio, sample_rate=sample_rate)
+                                    
+                                    phrase_audios.append(audio)
+                                    
+                                    # Add custom comma pause if it was a comma phrase (and not the very end)
+                                    if ',' in part and part != parts[-1]:
+                                        silence = create_silence(self.comma_pause, sample_rate)
+                                        phrase_audios.append(silence)
+                                        
+                                    current_phrase = ""
+                            
+                            if phrase_audios:
+                                final_audio = np.concatenate(phrase_audios)
+                        
+                        else:
+                            # Standard synthesis
+                            final_audio, sample_rate = synthesizer.synthesize_segment(
+                                sentence, 
+                                voice_name=self.voice, 
+                                speed=self.speed
+                            )
+                        
+                        if final_audio is None or len(final_audio) == 0:
+                             # Fallback if advanced logic failed to produce audio
+                             final_audio, sample_rate = synthesizer.synthesize_segment(
+                                sentence, 
+                                voice_name=self.voice, 
+                                speed=self.speed
+                            )
+
+                        # Add Sentence Pause
+                        if self.sentence_pause > 0:
+                            silence = create_silence(self.sentence_pause, sample_rate)
+                            final_audio = np.concatenate([final_audio, silence])
+                        
+                        duration = len(final_audio) / sample_rate
                         output_wav = os.path.join(temp_dir, f"ch{i}_seg{j:04d}.wav")
-                        synthesizer.save_audio(audio, sample_rate, output_wav)
+                        synthesizer.save_audio(final_audio, sample_rate, output_wav)
                         
                         all_audio_files.append(output_wav)
                         current_timestamp += duration

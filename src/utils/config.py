@@ -13,3 +13,6 @@ VOICES_DIR = os.path.join(ASSETS_DIR, 'voices')
 
 KOKORO_MODEL_PATH = os.path.join(MODELS_DIR, 'kokoro-v1.0.onnx')
 VOICES_BIN_PATH = os.path.join(VOICES_DIR, 'voices-v1.0.bin')
+
+# Voice preview sample text
+PREVIEW_TEXT = "They were careless people, Tom and Daisy. they smashed up things and creatures and then retreated back into their money or their vast carelessness or whatever it was that kept them together, and let other people clean up the mess they had made."
