@@ -22,7 +22,8 @@ class PreviewWorker(QThread):
             synth = AudioSynthesizer()
             # Friendly name mapping for preview text
             name = self.voice.split('_')[1].title()
-            text = f"Hello, I am {name}. This is a preview of my voice."
+            # text = f"Hello, I am {name}. This is a preview of my voice."
+            text = "They were careless people, Tom and Daisy- they smashed up things and creatures and then retreated back into their money or their vast carelessness or whatever it was that kept them together, and let other people clean up the mess they had made."
             
             audio, sr = synth.synthesize_segment(text, voice_name=self.voice, speed=self.speed)
             

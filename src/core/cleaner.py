@@ -8,6 +8,17 @@ def clean_text(text):
     # Normalize quotes
     text = text.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
     
+    # Remove footnote references like [1], [12]
+    text = re.sub(r'\[\d+\]', '', text)
+    
+    # Remove standalone numbers that look like footnotes (e.g., at end of sentence or word)
+    # This is a heuristic: remove numbers that appear after a word character, possibly with a space
+    # Be careful not to remove years or quantities. 
+    # Strategy: Remove numbers that are NOT preceded by a currency symbol or 'No.' and are at the end of a sentence.
+    # For now, let's stick to the user's request "numbers that stand for footnotes" which are often just [n] or superscript.
+    # If the user means just plain numbers at the end of sentences:
+    # text = re.sub(r'(?<=[a-zA-Z.,])\d+', '', text) # Too aggressive?
+    
     # Normalize whitespace
     text = re.sub(r'\s+', ' ', text).strip()
     

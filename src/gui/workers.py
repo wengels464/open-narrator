@@ -85,24 +85,48 @@ class SynthesisWorker(QThread):
                 except Exception as e:
                     self.log_message.emit(f"Error synthesizing intro: {e}")
 
+            # Pre-calculate total work for accurate progress
+            self.log_message.emit("Analyzing text for progress calculation...")
+            all_sentences = []
+            for chapter in self.chapters:
+                if self._is_cancelled: break
+                text = clean_text(chapter.content)
+                segs = segment_text(text)
+                if segs:
+                    all_sentences.extend([(chapter, seg) for seg in segs])
+            
+            total_sentences_count = len(all_sentences)
+            if total_sentences_count == 0:
+                self.error.emit("No text found to synthesize.")
+                return
+
+            sentences_processed = 0
+            
+            # Group sentences by chapter for processing
+            # We need to maintain the chapter structure for file naming and metadata
+            current_chapter_idx = -1
+            chapter_sentences = []
+            
+            # Re-organize for processing loop
+            # This is a bit inefficient to re-loop, but safer to stick to the original structure
+            # Let's just use the pre-calculated count for the denominator
+            
             for i, chapter in enumerate(self.chapters):
                 if self._is_cancelled:
                     break
                     
                 self.log_message.emit(f"Processing Chapter {i+1}/{total_chapters}: {chapter.title}")
                 
-                # Clean & Segment
+                # Clean & Segment (Redundant but fast enough)
                 text = clean_text(chapter.content)
                 sentences = segment_text(text)
                 
                 if not sentences:
-                    chapters_processed += 1
                     continue
                     
                 chapter_start_time = current_timestamp
                 
                 # Synthesize sentences
-                total_sentences = len(sentences)
                 for j, sentence in enumerate(sentences):
                     if self._is_cancelled:
                         break
@@ -124,28 +148,25 @@ class SynthesisWorker(QThread):
                         all_audio_files.append(output_wav)
                         current_timestamp += duration
                         
-                        # Update progress within chapter
-                        percent = int(((j + 1) / total_sentences) * 100)
-                        self.progress_update.emit(i, percent)
+                        # Update Global Progress
+                        sentences_processed += 1
+                        percent = int((sentences_processed / total_sentences_count) * 100)
+                        self.progress_update.emit(i, percent) # Emit global percent
+                        
+                        # Calculate ETA based on sentences
+                        elapsed = time.time() - start_time
+                        avg_time_per_sentence = elapsed / sentences_processed
+                        remaining_sentences = total_sentences_count - sentences_processed
+                        eta_seconds = int(avg_time_per_sentence * remaining_sentences)
+                        
+                        mins, secs = divmod(eta_seconds, 60)
+                        self.eta_update.emit(f"ETA: {mins}m {secs}s")
                         
                     except Exception as e:
                         self.log_message.emit(f"Error synthesizing sentence: {e}")
                 
                 chapter_end_time = current_timestamp
                 chapter_metadata.append((chapter.title, chapter_start_time, chapter_end_time))
-                
-                # Ensure 100% at end of chapter
-                self.progress_update.emit(i, 100)
-                
-                # Calculate ETA
-                chapters_processed += 1
-                elapsed = time.time() - start_time
-                avg_time_per_chapter = elapsed / chapters_processed
-                remaining_chapters = total_chapters - chapters_processed
-                eta_seconds = int(avg_time_per_chapter * remaining_chapters)
-                
-                mins, secs = divmod(eta_seconds, 60)
-                self.eta_update.emit(f"ETA: {mins}m {secs}s")
             
             
             if self._is_cancelled:
