@@ -142,19 +142,36 @@ def extract_chapters_from_epub(epub_path, skip_toc=False) -> List[Chapter]:
             
             # Try to find a title
             title = ""
+            title_element = None
             
             # 1. Check TOC map first (most reliable)
             item_name = item.get_name()
             if item_name in toc_map:
                 title = toc_map[item_name]
+                # Find the element matching this title to remove it
+                # We look for h1, h2, h3 with matching text
+                for tag in ['h1', 'h2', 'h3']:
+                    for header in soup.find_all(tag):
+                        if title.lower() in header.get_text().strip().lower():
+                            title_element = header
+                            break
+                    if title_element:
+                        break
             
             # 2. Fallback to HTML headings
             if not title:
                 h1 = soup.find('h1')
                 if h1:
                     title = h1.get_text().strip()
+                    title_element = h1
                 elif soup.find('h2'):
-                    title = soup.find('h2').get_text().strip()
+                    h2 = soup.find('h2')
+                    title = h2.get_text().strip()
+                    title_element = h2
+            
+            # Remove the title element from the body if found
+            if title_element:
+                title_element.decompose()
             
             # 3. Fallback to item name
             if not title:

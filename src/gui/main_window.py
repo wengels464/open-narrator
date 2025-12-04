@@ -9,6 +9,7 @@ from src.gui.widgets.chapter_list import ChapterList
 from src.gui.widgets.controls import Controls
 from src.gui.widgets.text_editor import ChapterEditor
 from src.gui.widgets.metadata_panel import MetadataPanel
+from src.gui.widgets.pronunciation_dialog import PronunciationDialog
 from src.gui.workers import ExtractionWorker, SynthesisWorker, MetadataWorker
 
 class MainWindow(QMainWindow):
@@ -23,6 +24,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.metadata = {}
         self.metadata_worker = None
+        self.pronunciation_corrections = {}  # word -> phonetic_spelling
         
         self.setup_ui()
 
@@ -77,12 +79,25 @@ class MainWindow(QMainWindow):
         right_column = QVBoxLayout()
         right_column.addWidget(right_splitter)
         
-        # Convert Button (centered under chapters)
+        # Button layout for pronunciation and convert
+        button_layout = QHBoxLayout()
+        
+        # Check Pronunciations Button
+        self.btn_pronunciations = QPushButton("Check Pronunciations")
+        self.btn_pronunciations.setMinimumHeight(45)
+        self.btn_pronunciations.setStyleSheet("background-color: #7b1fa2; color: white; font-weight: bold; font-size: 14px;")
+        self.btn_pronunciations.clicked.connect(self.check_pronunciations)
+        self.btn_pronunciations.setEnabled(False)  # Enable after chapters loaded
+        button_layout.addWidget(self.btn_pronunciations)
+        
+        # Convert Button
         self.btn_convert = QPushButton("Convert to Audiobook")
         self.btn_convert.setMinimumHeight(45)
         self.btn_convert.setStyleSheet("background-color: #1976d2; color: white; font-weight: bold; font-size: 14px;")
         self.btn_convert.clicked.connect(self.toggle_conversion)
-        right_column.addWidget(self.btn_convert)
+        button_layout.addWidget(self.btn_convert)
+        
+        right_column.addLayout(button_layout)
         
         top_layout.addLayout(right_column, 2) # 2/3 width
         
@@ -148,6 +163,9 @@ class MainWindow(QMainWindow):
         self.log(f"Title: {metadata.get('title', 'Unknown')}")
         self.drop_zone.label.setText(f"Loaded:\n{os.path.basename(self.current_file)}")
         self.worker = None
+        
+        # Enable pronunciation check button
+        self.btn_pronunciations.setEnabled(True)
         
         # Populate metadata panel with extracted info
         self.metadata_panel.txt_title.setText(metadata.get('title', ''))
@@ -241,7 +259,8 @@ class MainWindow(QMainWindow):
             settings['speed'],
             metadata=getattr(self, 'metadata', {}),
             sentence_pause=settings.get('sentence_pause', 0.4),
-            comma_pause=settings.get('comma_pause')
+            comma_pause=settings.get('comma_pause'),
+            pronunciation_corrections=self.pronunciation_corrections
         )
         self.worker.progress_update.connect(self.update_progress)
         self.worker.eta_update.connect(self.lbl_eta.setText)
@@ -321,3 +340,41 @@ class MainWindow(QMainWindow):
         self.controls.btn_convert.setText("Convert to Audiobook")
         self.controls.btn_convert.setStyleSheet("") # Reset style
         self.controls.btn_convert.setEnabled(True)
+    
+    def check_pronunciations(self):
+        """Open pronunciation dialog to check and correct difficult words."""
+        if not self.chapters:
+            QMessageBox.warning(self, "No Chapters", "Please load a book first.")
+            return
+        
+        # Collect all text from chapters
+        all_text = "\n\n".join([chapter.content for chapter in self.chapters])
+        
+        # Find difficult words
+        from src.utils.pronunciation import find_difficult_words
+        difficult_words = find_difficult_words(all_text)
+        
+        if not difficult_words:
+            QMessageBox.information(
+                self, 
+                "No Difficult Words", 
+                "No potentially difficult-to-pronounce words were found in the text."
+            )
+            return
+        
+        self.log(f"Found {len(difficult_words)} potentially difficult words.")
+        
+        # Open pronunciation dialog
+        dialog = PronunciationDialog(difficult_words, self)
+        if dialog.exec() == PronunciationDialog.DialogCode.Accepted:
+            corrections = dialog.get_corrections()
+            self.pronunciation_corrections = corrections
+            
+            if corrections:
+                self.log(f"Applied {len(corrections)} pronunciation corrections:")
+                for original, phonetic in corrections.items():
+                    self.log(f"  {original} → {phonetic}")
+            else:
+                self.log("No pronunciation corrections applied.")
+        else:
+            self.log("Pronunciation check cancelled.")

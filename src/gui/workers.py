@@ -104,7 +104,7 @@ class SynthesisWorker(QThread):
     error = Signal(str)
     cancelled = Signal(str) # Emits partial file path when cancelled
 
-    def __init__(self, chapters, output_path, voice, speed, metadata=None, sentence_pause=0.4, comma_pause=None):
+    def __init__(self, chapters, output_path, voice, speed, metadata=None, sentence_pause=0.4, comma_pause=None, pronunciation_corrections=None):
         super().__init__()
         self.chapters = chapters
         self.output_path = output_path
@@ -113,6 +113,7 @@ class SynthesisWorker(QThread):
         self.metadata = metadata or {}
         self.sentence_pause = sentence_pause
         self.comma_pause = comma_pause
+        self.pronunciation_corrections = pronunciation_corrections or {}
         self._is_cancelled = False
 
     def cancel(self):
@@ -228,6 +229,11 @@ class SynthesisWorker(QThread):
                         
                     if not sentence.strip():
                         continue
+                    
+                    # Apply pronunciation corrections
+                    if self.pronunciation_corrections:
+                        from src.utils.pronunciation import apply_pronunciation_corrections
+                        sentence = apply_pronunciation_corrections(sentence, self.pronunciation_corrections)
                         
                     try:
                         # Advanced Prosody Logic
@@ -342,8 +348,28 @@ class SynthesisWorker(QThread):
 
             # Assembly
             self.log_message.emit("Assembling M4B file...")
+            self.m4b_progress_update.emit(0)
+            m4b_start_time = time.time()
+            
             builder = M4BBuilder()
-            builder.combine_audio_chunks(all_audio_files, self.output_path, chapters=chapter_metadata)
+            
+            # Create progress callback for M4B assembly
+            def m4b_progress_callback(percent):
+                self.m4b_progress_update.emit(percent)
+                if percent > 0:
+                    elapsed = time.time() - m4b_start_time
+                    eta_seconds = int((elapsed / percent) * (100 - percent))
+                    mins, secs = divmod(eta_seconds, 60)
+                    self.m4b_eta_update.emit(f"ETA: {mins}m {secs}s")
+            
+            builder.combine_audio_chunks(
+                all_audio_files, 
+                self.output_path, 
+                chapters=chapter_metadata,
+                progress_callback=m4b_progress_callback
+            )
+            
+            self.m4b_progress_update.emit(100)
             
             title = os.path.splitext(os.path.basename(self.output_path))[0]
             builder.add_metadata(self.output_path, title=title, author="OpenNarrator")

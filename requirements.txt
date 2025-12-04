@@ -1,7 +1,23 @@
+# GUI Framework
 PySide6
+
+# AI/ML Core
 kokoro
 torch --index-url https://download.pytorch.org/whl/cu121
 torchaudio --index-url https://download.pytorch.org/whl/cu121
+# onnxruntime-gpu  # Optional: for GPU detection, falls back to torch
+
+# Audio Processing
+soundfile
+numpy
+mutagen
+
+# Document Processing
+beautifulsoup4
+EbookLib
+PyMuPDF
+pysbd
+
+# Utilities
 requests
 Pillow
-beautifulsoup4

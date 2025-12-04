@@ -6,10 +6,11 @@ class M4BBuilder:
     def __init__(self, ffmpeg_path="ffmpeg"):
         self.ffmpeg_path = ffmpeg_path
 
-    def combine_audio_chunks(self, audio_files, output_path, chapters=None):
+    def combine_audio_chunks(self, audio_files, output_path, chapters=None, progress_callback=None):
         """
         Combines multiple audio files into one M4B file using FFmpeg.
         chapters: List of (title, start_time, end_time) tuples in seconds.
+        progress_callback: Optional callback function(percent) to report progress.
         """
         # Create a file list for ffmpeg in the same directory as the audio files
         # This avoids issues with absolute paths and drive letters on Windows
@@ -50,7 +51,15 @@ class M4BBuilder:
         ])
         
         try:
+            if progress_callback:
+                # Emit progress during FFmpeg processing
+                # Since we can't easily track FFmpeg progress, emit incremental updates
+                progress_callback(10)  # Starting
+                
             subprocess.run(cmd, check=True, capture_output=True)
+            
+            if progress_callback:
+                progress_callback(90)  # FFmpeg complete
         except subprocess.CalledProcessError as e:
             print(f"FFmpeg failed: {e.stderr.decode()}")
             raise e
