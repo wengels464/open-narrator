@@ -14,7 +14,7 @@ class AudioSynthesizer:
         try:
             # Initialize pipeline for American English
             # lang_code='a' is for American English in Kokoro
-            self.pipeline = KPipeline(lang_code='a', device=self.device)
+            self.pipeline = KPipeline(lang_code='a', device=self.device, repo_id='hexgrad/Kokoro-82M')
             print(f"Kokoro initialized successfully on {self.device}")
         except Exception as e:
             print(f"Failed to initialize Kokoro: {e}")

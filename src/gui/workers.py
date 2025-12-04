@@ -75,7 +75,8 @@ class SynthesisWorker(QThread):
                 try:
                     audio, sr = synthesizer.synthesize_segment(intro_text, voice_name=self.voice, speed=self.speed)
                     duration = len(audio) / sr
-                    output_wav = os.path.join(temp_dir, "intro.wav")
+                    # Use absolute path for intro.wav
+                    output_wav = os.path.abspath(os.path.join(temp_dir, "intro.wav"))
                     synthesizer.save_audio(audio, sr, output_wav)
                     
                     all_audio_files.append(output_wav)
