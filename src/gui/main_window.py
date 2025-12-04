@@ -197,8 +197,8 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def update_progress(self, chapter_index, percent):
-        # Update individual chapter progress
-        self.chapter_list.update_progress(chapter_index, percent)
+        # Update individual chapter progress - Removed as per user request
+        pass
         
         # Update total progress (approximate)
         total_chapters = len(self.chapters)

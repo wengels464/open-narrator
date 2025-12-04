@@ -23,7 +23,7 @@ class ChapterEditor(QWidget):
         
         self.btn_save = QPushButton("Save Changes")
         self.btn_save.setObjectName("SecondaryButton")
-        self.btn_save.setFixedSize(100, 30) # Increased height from 24 to 30
+        self.btn_save.setFixedSize(120, 32) # Increased size for visibility
         self.btn_save.clicked.connect(self.save_changes)
         self.btn_save.setEnabled(False)
         

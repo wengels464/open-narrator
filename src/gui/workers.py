@@ -3,6 +3,7 @@ import os
 import time
 import tempfile
 import shutil
+import torch
 from src.core.extractor import extract_chapters_from_pdf, extract_chapters_from_epub
 from src.core.cleaner import clean_text, segment_text
 from src.core.synthesizer import AudioSynthesizer
@@ -177,10 +178,30 @@ class SynthesisWorker(QThread):
             builder.add_metadata(self.output_path, title=title, author="OpenNarrator")
             
             self.log_message.emit(f"Successfully saved to {self.output_path}")
+            
+            # Explicitly clean up synthesizer to free GPU memory
+            self.log_message.emit("Releasing GPU resources...")
+            del synthesizer
+            if 'torch' in globals():
+                torch.cuda.empty_cache()
+            
+            # Clean up temp files
+            self.log_message.emit("Cleaning up temporary files...")
+            if os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                    self.log_message.emit("Cleanup complete.")
+                except Exception as e:
+                    self.log_message.emit(f"Warning: Failed to clean up temp dir: {e}")
+            
             self.finished.emit()
             
         except Exception as e:
             self.error.emit(str(e))
         finally:
+            # Final safety check
             if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    pass

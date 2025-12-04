@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QVBoxLayout, QCheckBox, QHBoxLayout, QPushButton, QLabel, QProgressBar
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QVBoxLayout, QCheckBox, QHBoxLayout, QPushButton, QLabel, QProgressBar, QLineEdit
 from PySide6.QtCore import Qt, Signal
 
 class ChapterList(QWidget):
@@ -91,39 +91,29 @@ class ChapterList(QWidget):
             # Store chapter data on checkbox for easy retrieval
             checkbox.chapter_data = chapter
             
-            label_text = f"{chapter.order}. {chapter.title}"
-            if chapter.is_toc:
-                label_text += " [TOC]"
-                
-            label = QLabel(label_text)
-            # Ensure label text is visible with high contrast
-            label.setStyleSheet("QLabel { color: #ffffff; background-color: transparent; font-size: 13px; }")
-            if chapter.is_toc:
-                label.setStyleSheet("QLabel { color: #888888; font-style: italic; background-color: transparent; font-size: 13px; }")
-            
-            w_layout.addWidget(checkbox)
-            w_layout.addWidget(label, stretch=1)
-            
-            # Progress Bar (Hidden by default, shown during processing)
-            progress = QProgressBar()
-            progress.setRange(0, 100)
-            progress.setValue(0)
-            progress.setTextVisible(False)
-            progress.setFixedWidth(100)
-            progress.setFixedHeight(6) # Thinner
-            progress.setStyleSheet("""
-                QProgressBar {
-                    border: none;
-                    background-color: #3e3e42;
-                    border-radius: 3px;
+            # Editable Title
+            title_edit = QLineEdit(chapter.title)
+            title_edit.setStyleSheet("""
+                QLineEdit {
+                    color: #ffffff;
+                    background-color: transparent;
+                    border: 1px solid transparent;
+                    font-size: 13px;
+                    padding: 2px;
                 }
-                QProgressBar::chunk {
-                    background-color: #4ec9b0;
-                    border-radius: 3px;
+                QLineEdit:focus {
+                    background-color: #252526;
+                    border: 1px solid #007acc;
                 }
             """)
-            progress.hide()
-            w_layout.addWidget(progress)
+            if chapter.is_toc:
+                title_edit.setStyleSheet(title_edit.styleSheet() + "color: #888888; font-style: italic;")
+                
+            # Connect text changed to update chapter title
+            title_edit.textChanged.connect(lambda text, c=chapter: setattr(c, 'title', text))
+            
+            w_layout.addWidget(checkbox)
+            w_layout.addWidget(title_edit, stretch=1)
             
             # Add character count
             count_label = QLabel(f"{len(chapter.content)} chars")
@@ -141,24 +131,7 @@ class ChapterList(QWidget):
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
 
-    def update_progress(self, chapter_index, percent):
-        # chapter_index is 0-based index in the list
-        if chapter_index < self.list_widget.count():
-            item = self.list_widget.item(chapter_index)
-            widget = self.list_widget.itemWidget(item)
-            progress = widget.findChild(QProgressBar)
-            if progress:
-                progress.show()
-                progress.setValue(percent)
-
-    def reset_progress(self):
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            widget = self.list_widget.itemWidget(item)
-            progress = widget.findChild(QProgressBar)
-            if progress:
-                progress.hide()
-                progress.setValue(0)
+    # Progress methods removed as per user request
 
     def get_selected_chapters(self):
         selected = []

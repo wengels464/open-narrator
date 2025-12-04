@@ -21,9 +21,10 @@ class M4BBuilder:
         
         with open(list_file, 'w', encoding='utf-8') as f:
             for audio_file in audio_files:
-                # Use filename only, as list file is in same dir
-                filename = os.path.basename(audio_file)
-                f.write(f"file '{filename}'\n")
+                # Use absolute paths with forward slashes for FFmpeg on Windows
+                # This is the most robust method
+                abs_path = os.path.abspath(audio_file).replace('\\', '/')
+                f.write(f"file '{abs_path}'\n")
         
         metadata_file = None
         if chapters:
