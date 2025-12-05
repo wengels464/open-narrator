@@ -18,6 +18,7 @@ class MetadataResult:
     """Container for book metadata."""
     def __init__(self):
         self.title = ""
+        self.subtitle = ""
         self.author = ""
         self.translator = ""
         self.year = ""
@@ -31,6 +32,7 @@ class MetadataResult:
     def to_dict(self):
         return {
             "title": self.title,
+            "subtitle": self.subtitle,
             "author": self.author,
             "translator": self.translator,
             "year": self.year,
@@ -69,6 +71,7 @@ def search_open_library(title, author=None):
         
         result = MetadataResult()
         result.title = book.get("title", "")
+        result.subtitle = book.get("subtitle", "")
         result.author = ", ".join(book.get("author_name", []))
         result.year = str(book.get("first_publish_year", ""))
         result.isbn = book.get("isbn", [""])[0] if book.get("isbn") else ""
@@ -129,6 +132,7 @@ def search_google_books(title, author=None):
         
         result = MetadataResult()
         result.title = book.get("title", "")
+        result.subtitle = book.get("subtitle", "")  # Google Books has explicit subtitle field
         result.author = ", ".join(book.get("authors", []))
         result.year = book.get("publishedDate", "")[:4]  # Extract year
         result.description = book.get("description", "")
@@ -161,6 +165,8 @@ def search_google_books(title, author=None):
 def search_metadata(title, author=None):
     """
     Search for book metadata using Open Library, with Google Books fallback.
+    Merges data from both sources to fill missing fields.
+    Prefers author names with diacritics (e.g., "Martín" over "Martin").
     Returns MetadataResult or None if not found.
     """
     # Try Open Library first
@@ -175,6 +181,9 @@ def search_metadata(title, author=None):
             result = google_result
         else:
             # Merge missing fields from Google Books
+            if not result.subtitle and google_result.subtitle:
+                result.subtitle = google_result.subtitle
+                result.source += " + Google Books (subtitle)"
             if not result.isbn and google_result.isbn:
                 result.isbn = google_result.isbn
             if not result.description and google_result.description:
@@ -184,8 +193,23 @@ def search_metadata(title, author=None):
                 result.source += " + Google Books (cover)"
             if not result.year and google_result.year:
                 result.year = google_result.year
+            
+            # Prefer author with diacritics (more Unicode characters = more complete)
+            if google_result.author and _has_more_diacritics(google_result.author, result.author):
+                result.author = google_result.author
+                result.source += " + Google Books (author)"
     
     return result
+
+
+def _has_more_diacritics(text1: str, text2: str) -> bool:
+    """Check if text1 has more diacritic/Unicode characters than text2."""
+    import unicodedata
+    
+    def count_accented(s):
+        return sum(1 for c in s if unicodedata.category(c) in ('Mn', 'Mc', 'Me') or ord(c) > 127)
+    
+    return count_accented(text1) > count_accented(text2)
 
 
 def download_and_process_cover(url, output_path=None):

@@ -96,9 +96,86 @@ class MetadataWorker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
+
+class WordDetectionWorker(QThread):
+    """Worker thread for detecting difficult words without blocking GUI."""
+    progress = Signal(int, int)  # current, total (for sentences processed)
+    status = Signal(str)  # Status message
+    finished = Signal(list)  # List of difficult words
+    error = Signal(str)
+    
+    def __init__(self, chapters):
+        super().__init__()
+        self.chapters = chapters
+    
+    def run(self):
+        try:
+            from src.utils.pronunciation import find_difficult_words
+            import pysbd
+            
+            # Combine all chapter text
+            all_text = "\n\n".join([chapter.content for chapter in self.chapters])
+            
+            self.status.emit("Segmenting text into sentences...")
+            
+            # Segment into sentences for progress tracking
+            segmenter = pysbd.Segmenter(language="en", clean=False)
+            sentences = segmenter.segment(all_text)
+            total_sentences = len(sentences)
+            
+            self.status.emit(f"Scanning {total_sentences} sentences for difficult words...")
+            
+            # Process in batches for progress updates
+            difficult_words = set()
+            batch_size = max(1, total_sentences // 50)  # Update ~50 times
+            
+            import enchant
+            import re
+            
+            try:
+                english_dict = enchant.Dict("en_US")
+            except:
+                try:
+                    english_dict = enchant.Dict("en_GB")
+                except:
+                    english_dict = None
+            
+            for i, sentence in enumerate(sentences):
+                if i % batch_size == 0:
+                    self.progress.emit(i, total_sentences)
+                
+                words = sentence.split()
+                for j, word in enumerate(words):
+                    clean_word = re.sub(r'[^\w\'-]', '', word)
+                    if not clean_word or len(clean_word) < 3:
+                        continue
+                    if clean_word.isupper():
+                        continue
+                    # Only mid-sentence capitalized words
+                    if j == 0 or not clean_word[0].isupper():
+                        continue
+                    
+                    # Check dictionary
+                    if english_dict:
+                        lower_word = clean_word.lower()
+                        if english_dict.check(lower_word) or english_dict.check(clean_word):
+                            continue
+                    
+                    difficult_words.add(clean_word)
+            
+            self.progress.emit(total_sentences, total_sentences)
+            self.status.emit(f"Found {len(difficult_words)} difficult words")
+            self.finished.emit(sorted(list(difficult_words)))
+            
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class SynthesisWorker(QThread):
     progress_update = Signal(int, int) # current, total
     eta_update = Signal(str) # "MM:SS remaining"
+    m4b_progress_update = Signal(int)  # M4B assembly progress percent
+    m4b_eta_update = Signal(str)  # M4B assembly ETA
     log_message = Signal(str)
     finished = Signal()
     error = Signal(str)
@@ -229,13 +306,13 @@ class SynthesisWorker(QThread):
                         
                     if not sentence.strip():
                         continue
-                    
-                    # Apply pronunciation corrections
-                    if self.pronunciation_corrections:
-                        from src.utils.pronunciation import apply_pronunciation_corrections
-                        sentence = apply_pronunciation_corrections(sentence, self.pronunciation_corrections)
                         
                     try:
+                        # Apply pronunciation corrections (inside try block)
+                        if self.pronunciation_corrections:
+                            from src.utils.pronunciation import apply_pronunciation_corrections
+                            sentence = apply_pronunciation_corrections(sentence, self.pronunciation_corrections)
+                        
                         # Advanced Prosody Logic
                         final_audio = None
                         sample_rate = 24000

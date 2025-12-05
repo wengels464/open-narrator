@@ -5,7 +5,7 @@ Allows users to review and approve pronunciation corrections.
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLabel, QProgressBar, QHeaderView, QLineEdit, QCheckBox
+    QPushButton, QLabel, QProgressBar, QHeaderView, QLineEdit, QCheckBox, QWidget
 )
 from PySide6.QtCore import Qt, Signal, QThread
 from typing import Dict, List

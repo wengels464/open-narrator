@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QProgressBar, QFileDialog, QMessageBox, QSplitter, QStatusBar, QPushButton
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QProgressBar, QFileDialog, QMessageBox, QSplitter, QStatusBar, QPushButton, QListWidget, QGroupBox
 from PySide6.QtCore import Qt, QTimer
 import os
 import time
@@ -10,7 +10,7 @@ from src.gui.widgets.controls import Controls
 from src.gui.widgets.text_editor import ChapterEditor
 from src.gui.widgets.metadata_panel import MetadataPanel
 from src.gui.widgets.pronunciation_dialog import PronunciationDialog
-from src.gui.workers import ExtractionWorker, SynthesisWorker, MetadataWorker
+from src.gui.workers import ExtractionWorker, SynthesisWorker, MetadataWorker, WordDetectionWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -83,7 +83,7 @@ class MainWindow(QMainWindow):
         button_layout = QHBoxLayout()
         
         # Check Pronunciations Button
-        self.btn_pronunciations = QPushButton("Check Pronunciations")
+        self.btn_pronunciations = QPushButton("Check Pronunciations (Slow)")
         self.btn_pronunciations.setMinimumHeight(45)
         self.btn_pronunciations.setStyleSheet("background-color: #7b1fa2; color: white; font-weight: bold; font-size: 14px;")
         self.btn_pronunciations.clicked.connect(self.check_pronunciations)
@@ -102,6 +102,21 @@ class MainWindow(QMainWindow):
         top_layout.addLayout(right_column, 2) # 2/3 width
         
         main_layout.addLayout(top_layout)
+        
+        # Pronunciation Words Display (below main content, above log)
+        pronunciation_group = QGroupBox("Detected Difficult Words")
+        pronunciation_layout = QVBoxLayout(pronunciation_group)
+        
+        self.pronunciation_list = QListWidget()
+        self.pronunciation_list.setMaximumHeight(100)
+        self.pronunciation_list.setStyleSheet("QListWidget { background-color: #2d2d2d; border: 1px solid #555; }")
+        pronunciation_layout.addWidget(self.pronunciation_list)
+        
+        self.lbl_word_count = QLabel("No words detected yet. Click 'Check Pronunciations' after loading a book.")
+        self.lbl_word_count.setStyleSheet("color: #888; font-style: italic;")
+        pronunciation_layout.addWidget(self.lbl_word_count)
+        
+        main_layout.addWidget(pronunciation_group)
         
         self.log_area = QTextEdit()
         self.log_area.setObjectName("LogArea")
@@ -130,6 +145,20 @@ class MainWindow(QMainWindow):
         self.lbl_total_time = QLabel("Total Time: 00:00")
         self.lbl_total_time.setStyleSheet("margin-left: 10px; margin-right: 10px;")
         self.status_bar.addPermanentWidget(self.lbl_total_time)
+        
+        # M4B Progress Bar (hidden until M4B assembly starts)
+        self.progress_bar_m4b = QProgressBar()
+        self.progress_bar_m4b.setRange(0, 100)
+        self.progress_bar_m4b.setValue(0)
+        self.progress_bar_m4b.setTextVisible(True)
+        self.progress_bar_m4b.setVisible(False)
+        self.status_bar.addPermanentWidget(self.progress_bar_m4b, 1)
+        
+        # M4B ETA Label
+        self.lbl_m4b_eta = QLabel("")
+        self.lbl_m4b_eta.setStyleSheet("margin-left: 10px; margin-right: 10px;")
+        self.lbl_m4b_eta.setVisible(False)
+        self.status_bar.addPermanentWidget(self.lbl_m4b_eta)
 
     def log(self, message):
         self.log_area.append(message)
@@ -247,8 +276,8 @@ class MainWindow(QMainWindow):
         self.log(f"Processing {len(selected_chapters)} chapters...")
         
         # Update UI state
-        self.controls.btn_convert.setText("Cancel Conversion")
-        self.controls.btn_convert.setStyleSheet("background-color: #f44747;") # Red for cancel
+        self.btn_convert.setText("Cancel Conversion")
+        self.btn_convert.setStyleSheet("background-color: #f44747;") # Red for cancel
         self.progress_bar.setValue(0)
         
         # Start synthesis
@@ -264,6 +293,8 @@ class MainWindow(QMainWindow):
         )
         self.worker.progress_update.connect(self.update_progress)
         self.worker.eta_update.connect(self.lbl_eta.setText)
+        self.worker.m4b_progress_update.connect(self.update_m4b_progress)
+        self.worker.m4b_eta_update.connect(self.update_m4b_eta)
         self.worker.log_message.connect(self.log)
         self.worker.finished.connect(self.on_conversion_finished)
         self.worker.cancelled.connect(self.on_conversion_cancelled)
@@ -286,6 +317,18 @@ class MainWindow(QMainWindow):
         # Update total progress directly from worker (now global percent)
         self.progress_bar.setValue(percent)
         self.progress_bar.setFormat(f"Processing... ({percent}%)")
+    
+    def update_m4b_progress(self, percent):
+        """Update M4B assembly progress bar."""
+        if not self.progress_bar_m4b.isVisible():
+            self.progress_bar_m4b.setVisible(True)
+            self.lbl_m4b_eta.setVisible(True)
+        self.progress_bar_m4b.setValue(percent)
+        self.progress_bar_m4b.setFormat(f"M4B Assembly: {percent}%")
+    
+    def update_m4b_eta(self, eta_text):
+        """Update M4B assembly ETA label."""
+        self.lbl_m4b_eta.setText(f"M4B {eta_text}")
 
     def on_conversion_finished(self):
         if hasattr(self, 'timer'):
@@ -337,9 +380,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", error_msg)
 
     def reset_ui_state(self):
-        self.controls.btn_convert.setText("Convert to Audiobook")
-        self.controls.btn_convert.setStyleSheet("") # Reset style
-        self.controls.btn_convert.setEnabled(True)
+        self.btn_convert.setText("Convert to Audiobook")
+        self.btn_convert.setStyleSheet("") # Reset style
+        self.btn_convert.setEnabled(True)
     
     def check_pronunciations(self):
         """Open pronunciation dialog to check and correct difficult words."""
@@ -347,14 +390,57 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No Chapters", "Please load a book first.")
             return
         
-        # Collect all text from chapters
-        all_text = "\n\n".join([chapter.content for chapter in self.chapters])
+        # Disable button and show progress
+        self.btn_pronunciations.setText("⏳ Scanning...")
+        self.btn_pronunciations.setEnabled(False)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Scanning for difficult words...")
+        self.lbl_word_count.setText("Scanning text for difficult words...")
         
-        # Find difficult words
-        from src.utils.pronunciation import find_difficult_words
-        difficult_words = find_difficult_words(all_text)
+        # Start worker thread for word detection
+        self.word_detection_worker = WordDetectionWorker(self.chapters)
+        self.word_detection_worker.progress.connect(self._on_word_detection_progress)
+        self.word_detection_worker.status.connect(self._on_word_detection_status)
+        self.word_detection_worker.finished.connect(self._on_word_detection_finished)
+        self.word_detection_worker.error.connect(self._on_word_detection_error)
+        self.word_detection_worker.start()
+    
+    def _on_word_detection_progress(self, current, total):
+        """Update progress bar during word detection."""
+        if total > 0:
+            percent = int((current / total) * 100)
+            self.progress_bar.setValue(percent)
+            self.progress_bar.setFormat(f"Scanning... {percent}%")
+    
+    def _on_word_detection_status(self, message):
+        """Update status during word detection."""
+        self.lbl_word_count.setText(message)
+    
+    def _on_word_detection_error(self, error_msg):
+        """Handle word detection error."""
+        self.btn_pronunciations.setText("Check Pronunciations (Slow)")
+        self.btn_pronunciations.setEnabled(True)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("")
+        QMessageBox.warning(self, "Error", f"Word detection failed: {error_msg}")
+    
+    def _on_word_detection_finished(self, difficult_words):
+        """Handle completion of word detection."""
+        # Restore button
+        self.btn_pronunciations.setText("Check Pronunciations (Slow)")
+        self.btn_pronunciations.setEnabled(True)
+        self.progress_bar.setValue(100)
+        self.progress_bar.setFormat("Scan complete")
+        
+        # Populate the word list display
+        self.pronunciation_list.clear()
+        for word in difficult_words:
+            self.pronunciation_list.addItem(word)
         
         if not difficult_words:
+            self.lbl_word_count.setText("No difficult words found in this book.")
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat("")
             QMessageBox.information(
                 self, 
                 "No Difficult Words", 
@@ -362,7 +448,12 @@ class MainWindow(QMainWindow):
             )
             return
         
+        self.lbl_word_count.setText(f"Found {len(difficult_words)} potentially difficult words. Review and apply corrections below.")
         self.log(f"Found {len(difficult_words)} potentially difficult words.")
+        
+        # Reset progress bar before dialog
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("")
         
         # Open pronunciation dialog
         dialog = PronunciationDialog(difficult_words, self)
@@ -374,7 +465,9 @@ class MainWindow(QMainWindow):
                 self.log(f"Applied {len(corrections)} pronunciation corrections:")
                 for original, phonetic in corrections.items():
                     self.log(f"  {original} → {phonetic}")
+                self.lbl_word_count.setText(f"{len(corrections)} corrections applied from {len(difficult_words)} detected words.")
             else:
                 self.log("No pronunciation corrections applied.")
         else:
             self.log("Pronunciation check cancelled.")
+

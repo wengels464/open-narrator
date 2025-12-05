@@ -35,18 +35,28 @@ class MetadataPanel(QWidget):
         metadata_layout.addWidget(QLabel("Title"))
         self.txt_title = QLineEdit()
         self.txt_title.setPlaceholderText("Book title")
+        self.txt_title.setMinimumHeight(28)
         metadata_layout.addWidget(self.txt_title)
+        
+        # Subtitle
+        metadata_layout.addWidget(QLabel("Subtitle"))
+        self.txt_subtitle = QLineEdit()
+        self.txt_subtitle.setPlaceholderText("Book subtitle (optional)")
+        self.txt_subtitle.setMinimumHeight(28)
+        metadata_layout.addWidget(self.txt_subtitle)
         
         # Author
         metadata_layout.addWidget(QLabel("Author"))
         self.txt_author = QLineEdit()
         self.txt_author.setPlaceholderText("Author name")
+        self.txt_author.setMinimumHeight(28)
         metadata_layout.addWidget(self.txt_author)
         
         # ISBN
         metadata_layout.addWidget(QLabel("ISBN"))
         self.txt_isbn = QLineEdit()
         self.txt_isbn.setPlaceholderText("ISBN-10 or ISBN-13")
+        self.txt_isbn.setMinimumHeight(28)
         metadata_layout.addWidget(self.txt_isbn)
         
         # Description
@@ -107,6 +117,7 @@ class MetadataPanel(QWidget):
         """
         if isinstance(metadata, dict):
             self.txt_title.setText(metadata.get("title", ""))
+            self.txt_subtitle.setText(metadata.get("subtitle", ""))
             self.txt_author.setText(metadata.get("author", ""))
             self.txt_isbn.setText(metadata.get("isbn", ""))
             self.txt_description.setPlainText(metadata.get("description", ""))
@@ -117,6 +128,7 @@ class MetadataPanel(QWidget):
         else:
             # MetadataResult object
             self.txt_title.setText(metadata.title or "")
+            self.txt_subtitle.setText(getattr(metadata, 'subtitle', "") or "")
             self.txt_author.setText(metadata.author or "")
             self.txt_isbn.setText(metadata.isbn or "")
             self.txt_description.setPlainText(metadata.description or "")
@@ -128,6 +140,7 @@ class MetadataPanel(QWidget):
         """Get current metadata as dict."""
         return {
             "title": self.txt_title.text().strip(),
+            "subtitle": self.txt_subtitle.text().strip(),
             "author": self.txt_author.text().strip(),
             "isbn": self.txt_isbn.text().strip(),
             "description": self.txt_description.toPlainText().strip(),
@@ -168,6 +181,7 @@ class MetadataPanel(QWidget):
     def clear(self):
         """Clear all fields."""
         self.txt_title.clear()
+        self.txt_subtitle.clear()
         self.txt_author.clear()
         self.txt_isbn.clear()
         self.txt_description.clear()
