@@ -6,9 +6,9 @@ def clean_text(text):
     """
     Normalizes punctuation, removes artifacts, and prepares text for TTS.
     
-    Allowed punctuation: . , : ; -
+    Allowed punctuation: . , ? ! : ; -
     Pause groupings:
-      - Sentence pause (. ; -): treated as sentence breaks
+      - Sentence pause (. ? ! ; -): treated as sentence breaks
       - Comma pause (, :): treated as phrase pauses
     """
     # Normalize smart quotes to standard quotes
@@ -138,6 +138,22 @@ def clean_text(text):
     
     text = re.sub(r'(\d+(?:\.\d+)?)\s*%', expand_percent, text)
     
+    # Add strategic pauses after transition words for better TTS prosody
+    # These words benefit from a brief pause after them for emphasis
+    transition_words = [
+        r'\bHowever\b', r'\bTherefore\b', r'\bMeanwhile\b', r'\bSuddenly\b',
+        r'\bFinally\b', r'\bUnfortunately\b', r'\bFortunately\b', r'\bMoreover\b',
+        r'\bNevertheless\b', r'\bConsequently\b', r'\bFurthermore\b', r'\bIndeed\b',
+        r'\bStill\b', r'\bThus\b', r'\bHence\b', r'\bOtherwise\b',
+        r'\bhowever\b', r'\btherefore\b', r'\bmeanwhile\b', r'\bsuddenly\b',
+        r'\bfinally\b', r'\bunfortunately\b', r'\bfortunately\b', r'\bmoreover\b',
+        r'\bnevertheless\b', r'\bconsequently\b', r'\bfurthermore\b', r'\bindeed\b',
+        r'\bstill\b', r'\bthus\b', r'\bhence\b', r'\botherwise\b',
+    ]
+    for word in transition_words:
+        # Add comma after transition word if not already followed by punctuation
+        text = re.sub(rf'({word})(?![,\.!?;:])', r'\1,', text)
+    
     # Remove footnote patterns
     # Pattern 1: Bracketed numbers like [1], [12], [123]
     text = re.sub(r'\[\d+\]', '', text)
@@ -171,10 +187,10 @@ def clean_text(text):
     text = re.sub(r'~{2,}', '', text)    # Multiple tildes → remove
     text = re.sub(r'={2,}', '', text)    # Multiple equals → remove
     
-    # Remove remaining non-allowed punctuation (keep only . , - and alphanumerics/spaces)
-    # Allowed: letters (including Unicode/accented), digits, spaces, . , - ' "
+    # Remove remaining non-allowed punctuation (keep only . , ? ! - and alphanumerics/spaces)
+    # Allowed: letters (including Unicode/accented), digits, spaces, . , ? ! - ' "
     # Use explicit character class instead of \w to preserve Unicode letters
-    text = re.sub(r"[^\w\s.,'\"\u00C0-\u024F()-]", '', text, flags=re.UNICODE)
+    text = re.sub(r"[^\w\s.,?!'\"\u00C0-\u024F()-]", '', text, flags=re.UNICODE)
     
     # Clean up hyphen usage: hyphen with space on either side becomes period
     text = re.sub(r'\s+-\s+', '. ', text)
@@ -188,7 +204,7 @@ def clean_text(text):
     
     # Clean up multiple consecutive punctuation after processing
     text = re.sub(r'[.,]{2,}', '.', text)  # Multiple comma/period → period
-    text = re.sub(r'\s+([.,])', r'\1', text)  # Remove space before punctuation
+    text = re.sub(r'\s+([.,?!])', r'\1', text)  # Remove space before punctuation
     
     return text
 

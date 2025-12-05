@@ -21,3 +21,4 @@ pysbd
 # Utilities
 requests
 Pillow
+num2words

@@ -238,6 +238,24 @@ class PronunciationDialog(QDialog):
     def get_corrections(self) -> Dict[str, str]:
         """Get the approved corrections dict."""
         return self.approved_corrections
+    
+    def closeEvent(self, event):
+        """Ensure worker thread is stopped before closing."""
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.wait(3000)  # Wait up to 3 seconds
+            if self.worker.isRunning():
+                self.worker.terminate()
+        super().closeEvent(event)
+    
+    def reject(self):
+        """Override reject to ensure worker cleanup on Cancel."""
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.wait(3000)
+            if self.worker.isRunning():
+                self.worker.terminate()
+        super().reject()
 
 
 # For testing
